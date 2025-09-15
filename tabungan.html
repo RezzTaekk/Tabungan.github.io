@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Tabungan 4 Juta</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #fff;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      width: 430px;
+      text-align: center;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 15px;
+    }
+    input {
+      width: 90%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    button {
+      margin: 5px;
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: 0.3s;
+    }
+    button:hover { opacity: 0.9; }
+    button.keluar { background: #e74c3c; }
+    button.reset { background: #555; }
+    button.export { background: #1e88e5; }
+    .progress-bar {
+      width: 100%;
+      background: #ddd;
+      border-radius: 8px;
+      margin: 15px 0;
+      height: 25px;
+      overflow: hidden;
+    }
+    .progress {
+      height: 100%;
+      width: 0%;
+      background: #4caf50;
+      text-align: center;
+      line-height: 25px;
+      color: white;
+      font-weight: bold;
+      border-radius: 8px;
+    }
+    .info {
+      font-size: 16px;
+      margin-top: 10px;
+      color: #444;
+    }
+    .estimasi {
+      margin-top: 15px;
+      font-weight: bold;
+      color: #222;
+    }
+    .riwayat {
+      margin-top: 20px;
+      text-align: left;
+      max-height: 200px;
+      overflow-y: auto;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+    }
+    .riwayat h3 { margin: 0 0 10px 0; }
+    .log {
+      font-size: 14px;
+      margin: 4px 0;
+    }
+    .masuk { color: #2ecc71; }
+    .keluar { color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Tabungan 4 Juta</h1>
+    <p>Masukkan jumlah tabungan (Rp):</p>
+    <input type="number" id="inputTabungan" placeholder="Contoh: 8000">
+    <br>
+    <button onclick="tambahTabungan()">Simpan (Masuk)</button>
+    <button class="keluar" onclick="kurangiTabungan()">Keluarkan</button>
+    <button class="reset" onclick="resetData()">Reset Data</button>
+    <button class="export" onclick="exportCSV()">Export CSV</button>
+    
+    <div class="progress-bar">
+      <div id="progress" class="progress">0%</div>
+    </div>
+    
+    <div class="info">
+      <p>💰 Total Masuk: <span id="totalMasuk">Rp 0</span></p>
+      <p>💸 Total Keluar: <span id="totalKeluar">Rp 0</span></p>
+      <p>📦 Terkumpul (Saldo Akhir): <span id="total">Rp 0</span></p>
+      <p>🎯 Sisa ke Target: <span id="sisa">Rp 4.000.000</span></p>
+    </div>
+
+    <div class="estimasi" id="estimasi">
+      Estimasi hari: -
+    </div>
+
+    <div class="riwayat">
+      <h3>📜 Riwayat Transaksi</h3>
+      <div id="logList"></div>
+    </div>
+  </div>
+
+  <script>
+    const target = 4000000;
+    let data = {
+      total: 0,
+      totalMasuk: 0,
+      totalKeluar: 0,
+      lastNominal: 0,
+      riwayat: []
+    };
+
+    if (localStorage.getItem("tabunganData")) {
+      data = JSON.parse(localStorage.getItem("tabunganData"));
+    }
+
+    function simpanData() {
+      localStorage.setItem("tabunganData", JSON.stringify(data));
+    }
+
+    function formatRupiah(angka) {
+      return new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR"
+      }).format(angka);
+    }
+
+    function updateUI() {
+      document.getElementById("total").innerText = formatRupiah(data.total);
+      document.getElementById("sisa").innerText = formatRupiah(target - data.total);
+      document.getElementById("totalMasuk").innerText = formatRupiah(data.totalMasuk);
+      document.getElementById("totalKeluar").innerText = formatRupiah(data.totalKeluar);
+
+      let persen = Math.floor((data.total / target) * 100);
+      document.getElementById("progress").style.width = persen + "%";
+      document.getElementById("progress").innerText = persen + "%";
+
+      let sisa = target - data.total;
+      let estimasiHari = data.lastNominal > 0 ? Math.ceil(sisa / data.lastNominal) : "-";
+      document.getElementById("estimasi").innerText =
+        sisa > 0 ? `Estimasi hari: ${estimasiHari} hari lagi` : "🎉 Target Tercapai!";
+      
+      let logList = document.getElementById("logList");
+      logList.innerHTML = "";
+      data.riwayat.slice().reverse().forEach(log => {
+        let div = document.createElement("div");
+        div.classList.add("log", log.jenis);
+        div.innerText = `${log.waktu} - ${log.jenis.toUpperCase()} ${formatRupiah(log.nominal)}`;
+        logList.appendChild(div);
+      });
+    }
+
+    function tambahTabungan() {
+      let input = document.getElementById("inputTabungan").value;
+      let nominal = parseInt(input);
+
+      if (!isNaN(nominal) && nominal > 0) {
+        data.lastNominal = nominal;
+        data.total += nominal;
+        if (data.total > target) data.total = target;
+        data.totalMasuk += nominal;
+
+        data.riwayat.push({
+          waktu: new Date().toLocaleString("id-ID"),
+          nominal: nominal,
+          jenis: "masuk"
+        });
+
+        simpanData();
+        updateUI();
+        document.getElementById("inputTabungan").value = "";
+      }
+    }
+
+    function kurangiTabungan() {
+      let input = document.getElementById("inputTabungan").value;
+      let nominal = parseInt(input);
+
+      if (!isNaN(nominal) && nominal > 0) {
+        if (nominal > data.total) {
+          alert("Uang tabungan tidak cukup!");
+          return;
+        }
+        data.total -= nominal;
+        data.totalKeluar += nominal;
+
+        data.riwayat.push({
+          waktu: new Date().toLocaleString("id-ID"),
+          nominal: nominal,
+          jenis: "keluar"
+        });
+
+        simpanData();
+        updateUI();
+        document.getElementById("inputTabungan").value = "";
+      }
+    }
+
+    function resetData() {
+      if (confirm("Yakin mau reset semua data tabungan?")) {
+        data = {
+          total: 0,
+          totalMasuk: 0,
+          totalKeluar: 0,
+          lastNominal: 0,
+          riwayat: []
+        };
+        simpanData();
+        updateUI();
+      }
+    }
+
+    function exportCSV() {
+      let csv = "Waktu,Nominal,Jenis\n";
+      data.riwayat.forEach(log => {
+        csv += `"${log.waktu}",${log.nominal},${log.jenis}\n`;
+      });
+      csv += `\nTotal Masuk,${data.totalMasuk}\n`;
+      csv += `Total Keluar,${data.totalKeluar}\n`;
+      csv += `Saldo Akhir,${data.total}\n`;
+
+      let blob = new Blob([csv], { type: "text/csv" });
+      let url = URL.createObjectURL(blob);
+      let a = document.createElement("a");
+      a.href = url;
+      a.download = "catatan_tabungan.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    updateUI();
+  </script>
+</body>
+</html>
